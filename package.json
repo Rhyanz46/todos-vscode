@@ -1,7 +1,11 @@
 {
-  "name": "plan-engineering",
+  "name": "engineer-plan",
   "publisher": "rhyanz46",
-  "displayName": "Plan Engineering",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rhyanz46/engineer-plan"
+  },
+  "displayName": "Engineer Plan",
   "description": "makes todo for you coding day",
   "version": "0.0.1",
   "engines": {
@@ -11,77 +15,77 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:planEngineeringView",
-    "onCommand:codextodo.refresh"
+    "onView:engineerPlanView",
+    "onCommand:engineer-plan.refresh"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codextodoContainer",
+          "id": "engineerPlanContainer",
           "title": "Todo",
           "icon": "media/check.svg"
         }
       ]
     },
     "views": {
-      "codextodoContainer": [
+      "engineerPlanContainer": [
         {
-          "id": "planEngineeringView",
+          "id": "engineerPlanView",
           "name": "Tasks"
         }
       ]
     },
     "commands": [
       {
-        "command": "codextodo.refresh",
-        "title": "Refresh Todos"
+        "command": "engineer-plan.refresh",
+        "title": "Refresh"
       },
       {
-        "command": "plan-engineering.login",
+        "command": "engineer-plan.login",
         "title": "Login"
       },
       {
-        "command": "plan-engineering.logout",
+        "command": "engineer-plan.logout",
         "title": "Logout"
       },
       {
-        "command": "codextodo.openTodo",
+        "command": "engineer-plan.openTodo",
         "title": "Open Todo"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "codextodo.refresh",
-          "when": "view == planEngineeringView",
+          "command": "engineer-plan.refresh",
+          "when": "view == engineerPlanView",
           "group": "navigation"
         },
         {
-          "command": "plan-engineering.logout",
-          "when": "view == planEngineeringView && codextodo.hasToken",
+          "command": "engineer-plan.logout",
+          "when": "view == engineerPlanView && engineerPlan.hasToken",
           "group": "navigation@1"
         },
         {
-          "command": "plan-engineering.login",
-          "when": "view == planEngineeringView && !codextodo.hasToken",
+          "command": "engineer-plan.login",
+          "when": "view == engineerPlanView && !engineerPlan.hasToken",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "codextodo.openTodo",
-          "when": "view == planEngineeringView",
+          "command": "engineer-plan.openTodo",
+          "when": "view == engineerPlanView",
           "group": "inline"
         }
       ]
     },
     "configuration": {
-      "id": "codextodo",
-      "title": "Codex Todo",
+      "id": "engineer-plan",
+      "title": "Engineer Plan",
       "properties": {
-        "codextodo.apiBaseUrl": {
+        "engineer-plan.apiBaseUrl": {
           "type": "string",
           "default": "https://go-routine.com/core",
           "description": "Base URL of the backend API for the Todo extension (e.g. https://example.com/api)"

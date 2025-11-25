@@ -39,7 +39,7 @@ function resolveStatus(rawStatus?: string): TodoStatusVisual {
 }
 
 class AuthManager {
-    private readonly secretKey = 'codextodo.token';
+    private readonly secretKey = 'engineer-plan.token';
 
     constructor(private readonly secretStorage: vscode.SecretStorage, private readonly apiBaseUrl: string) {}
 
@@ -63,7 +63,7 @@ class AuthManager {
 
     async promptForToken(): Promise<string | undefined> {
         if (!this.apiBaseUrl) {
-            vscode.window.showWarningMessage('codextodo.apiBaseUrl is not set');
+            vscode.window.showWarningMessage('engineer-plan.apiBaseUrl is not set');
             return undefined;
         }
 
@@ -99,7 +99,7 @@ class AuthManager {
     }
 
     private async setContext(hasToken: boolean): Promise<void> {
-        await vscode.commands.executeCommand('setContext', 'codextodo.hasToken', hasToken);
+        await vscode.commands.executeCommand('setContext', 'engineerPlan.hasToken', hasToken);
     }
 
     private async validateToken(token: string): Promise<ApiProfile | undefined> {
@@ -147,7 +147,7 @@ class TodoItem extends vscode.TreeItem {
         this.description = `${statusLabel} (+${scorePlus} / -${scoreMinus})`;
         this.contextValue = 'todoItem';
         this.command = {
-            command: 'codextodo.openTodo',
+            command: 'engineer-plan.openTodo',
             title: 'Open Todo',
             arguments: [todo, label],
         };
@@ -177,7 +177,7 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
 
     private async loadFromBackend(allowPromptForToken: boolean): Promise<void> {
         if (!this.apiBaseUrl) {
-            vscode.window.showWarningMessage('codextodo.apiBaseUrl is not set');
+            vscode.window.showWarningMessage('engineer-plan.apiBaseUrl is not set');
             this.items = [];
             return;
         }
@@ -242,34 +242,34 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-    const apiBaseUrl = vscode.workspace.getConfiguration('codextodo').get<string>('apiBaseUrl') ?? '';
+    const apiBaseUrl = vscode.workspace.getConfiguration('engineer-plan').get<string>('apiBaseUrl') ?? '';
     const authManager = new AuthManager(context.secrets, apiBaseUrl);
     void authManager.ensureContext();
     const provider = new TodoTreeDataProvider(apiBaseUrl, authManager);
 
     void provider.refresh();
 
-    const view = vscode.window.createTreeView('planEngineeringView', {
+    const view = vscode.window.createTreeView('engineerPlanView', {
         treeDataProvider: provider,
     });
 
-    const refreshCommand = vscode.commands.registerCommand('codextodo.refresh', async () => {
+    const refreshCommand = vscode.commands.registerCommand('engineer-plan.refresh', async () => {
         await provider.refresh();
     });
 
-    const loginCommand = vscode.commands.registerCommand('plan-engineering.login', async () => {
+    const loginCommand = vscode.commands.registerCommand('engineer-plan.login', async () => {
         await authManager.clearToken();
         await authManager.promptForToken();
         await provider.refresh();
     });
 
-    const logoutCommand = vscode.commands.registerCommand('plan-engineering.logout', async () => {
+    const logoutCommand = vscode.commands.registerCommand('engineer-plan.logout', async () => {
         await authManager.clearToken();
         vscode.window.showInformationMessage('Logged out from backend');
         await provider.refresh({ allowPrompt: false });
     });
 
-    const openTodoCommand = vscode.commands.registerCommand('codextodo.openTodo', (todo: ApiTodo, displayStatus?: string) => {
+    const openTodoCommand = vscode.commands.registerCommand('engineer-plan.openTodo', (todo: ApiTodo, displayStatus?: string) => {
         if (!todo) {
             return;
         }
