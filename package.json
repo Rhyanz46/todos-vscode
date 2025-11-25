@@ -1,6 +1,7 @@
 {
-  "name": "plan-enginering",
-  "displayName": "Plan Enginering",
+  "name": "plan-engineering",
+  "publisher": "rhyanz46",
+  "displayName": "Plan Engineering",
   "description": "makes todo for you coding day",
   "version": "0.0.1",
   "engines": {
@@ -10,7 +11,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:planEngineringView",
+    "onView:planEngineeringView",
     "onCommand:codextodo.refresh"
   ],
   "main": "./out/extension.js",
@@ -27,7 +28,7 @@
     "views": {
       "codextodoContainer": [
         {
-          "id": "planEngineringView",
+          "id": "planEngineeringView",
           "name": "Tasks"
         }
       ]
@@ -38,11 +39,11 @@
         "title": "Refresh Todos"
       },
       {
-        "command": "plan-enginering.login",
+        "command": "plan-engineering.login",
         "title": "Login"
       },
       {
-        "command": "plan-enginering.logout",
+        "command": "plan-engineering.logout",
         "title": "Logout"
       },
       {
@@ -54,24 +55,24 @@
       "view/title": [
         {
           "command": "codextodo.refresh",
-          "when": "view == planEngineringView",
+          "when": "view == planEngineeringView",
           "group": "navigation"
         },
         {
-          "command": "plan-enginering.logout",
-          "when": "view == planEngineringView && codextodo.hasToken",
+          "command": "plan-engineering.logout",
+          "when": "view == planEngineeringView && codextodo.hasToken",
           "group": "navigation@1"
         },
         {
-          "command": "plan-enginering.login",
-          "when": "view == planEngineringView && !codextodo.hasToken",
+          "command": "plan-engineering.login",
+          "when": "view == planEngineeringView && !codextodo.hasToken",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
           "command": "codextodo.openTodo",
-          "when": "view == planEngineringView",
+          "when": "view == planEngineeringView",
           "group": "inline"
         }
       ]

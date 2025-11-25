@@ -249,7 +249,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     void provider.refresh();
 
-    const view = vscode.window.createTreeView('planEngineringView', {
+    const view = vscode.window.createTreeView('planEngineeringView', {
         treeDataProvider: provider,
     });
 
@@ -257,13 +257,13 @@ export function activate(context: vscode.ExtensionContext): void {
         await provider.refresh();
     });
 
-    const loginCommand = vscode.commands.registerCommand('plan-enginering.login', async () => {
+    const loginCommand = vscode.commands.registerCommand('plan-engineering.login', async () => {
         await authManager.clearToken();
         await authManager.promptForToken();
         await provider.refresh();
     });
 
-    const logoutCommand = vscode.commands.registerCommand('plan-enginering.logout', async () => {
+    const logoutCommand = vscode.commands.registerCommand('plan-engineering.logout', async () => {
         await authManager.clearToken();
         vscode.window.showInformationMessage('Logged out from backend');
         await provider.refresh({ allowPrompt: false });
