@@ -1,0 +1,112 @@
+{
+  "name": "plan-enginering",
+  "displayName": "Plan Enginering",
+  "description": "makes todo for you coding day",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.106.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:planEngineringView",
+    "onCommand:codextodo.refresh"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codextodoContainer",
+          "title": "Todo",
+          "icon": "media/check.svg"
+        }
+      ]
+    },
+    "views": {
+      "codextodoContainer": [
+        {
+          "id": "planEngineringView",
+          "name": "Tasks"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codextodo.refresh",
+        "title": "Refresh Todos"
+      },
+      {
+        "command": "plan-enginering.login",
+        "title": "Login"
+      },
+      {
+        "command": "plan-enginering.logout",
+        "title": "Logout"
+      },
+      {
+        "command": "codextodo.openTodo",
+        "title": "Open Todo"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codextodo.refresh",
+          "when": "view == planEngineringView",
+          "group": "navigation"
+        },
+        {
+          "command": "plan-enginering.logout",
+          "when": "view == planEngineringView && codextodo.hasToken",
+          "group": "navigation@1"
+        },
+        {
+          "command": "plan-enginering.login",
+          "when": "view == planEngineringView && !codextodo.hasToken",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codextodo.openTodo",
+          "when": "view == planEngineringView",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "id": "codextodo",
+      "title": "Codex Todo",
+      "properties": {
+        "codextodo.apiBaseUrl": {
+          "type": "string",
+          "default": "https://go-routine.com/core",
+          "description": "Base URL of the backend API for the Todo extension (e.g. https://example.com/api)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "clean": "node -e \"const fs=require('fs');['out','dist'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true});}catch{}});\"",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.106.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.46.3",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "ts-loader": "^9.5.4",
+    "webpack": "^5.102.1",
+    "webpack-cli": "^6.0.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
