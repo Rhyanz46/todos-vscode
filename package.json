@@ -3,10 +3,10 @@
   "publisher": "rhyanz46",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rhyanz46/engineer-plan"
+    "url": "https://github.com/Rhyanz46/todos-vscode"
   },
   "displayName": "Engineer Plan",
-  "description": "makes todo for you coding day",
+  "description": "Track and manage your daily tasks from go-routine backend",
   "version": "0.0.2",
   "engines": {
     "vscode": "^1.106.1"
