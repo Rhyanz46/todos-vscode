@@ -51,6 +51,10 @@
         "title": "Logout"
       },
       {
+        "command": "engineer-plan.create",
+        "title": "Create Todo"
+      },
+      {
         "command": "engineer-plan.openTodo",
         "title": "Open Todo"
       }
@@ -71,6 +75,11 @@
           "command": "engineer-plan.login",
           "when": "view == engineerPlanView && !engineerPlan.hasToken",
           "group": "navigation@1"
+        },
+        {
+          "command": "engineer-plan.create",
+          "when": "view == engineerPlanView && engineerPlan.hasToken",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

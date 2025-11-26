@@ -15,6 +15,12 @@ interface ApiProfile {
     username?: string;
     email?: string;
     timezone?: string;
+    timezoneOffset?: string;
+}
+
+interface AuthState {
+    token: string;
+    profile?: ApiProfile;
 }
 
 type TodoStatusVisual = {
@@ -38,21 +44,63 @@ function resolveStatus(rawStatus?: string): TodoStatusVisual {
     return { icon: '⏳', label: statusText || 'not started', status: 'pending' };
 }
 
+function parseOffsetMinutes(offset?: string): number | undefined {
+    if (!offset) {
+        return undefined;
+    }
+    const match = /^([+-])(\d{2}):(\d{2})$/.exec(offset.trim());
+    if (!match) {
+        return undefined;
+    }
+    const sign = match[1] === '-' ? -1 : 1;
+    const hours = Number(match[2]);
+    const minutes = Number(match[3]);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+        return undefined;
+    }
+    return sign * (hours * 60 + minutes);
+}
+
+function dateStringWithOffset(offset?: string): string {
+    const now = new Date();
+    const offsetMinutes = parseOffsetMinutes(offset) ?? -now.getTimezoneOffset();
+    const localForOffset = new Date(now.getTime() + offsetMinutes * 60_000);
+    return localForOffset.toISOString().slice(0, 10);
+}
+
+function formatDateTimeWithOffset(date: Date, offset?: string): string {
+    const offsetMinutes = parseOffsetMinutes(offset) ?? -date.getTimezoneOffset();
+    const adjusted = new Date(date.getTime() + offsetMinutes * 60_000);
+    const iso = adjusted.toISOString().replace('Z', '');
+
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const absMinutes = Math.abs(offsetMinutes);
+    const hours = Math.floor(absMinutes / 60)
+        .toString()
+        .padStart(2, '0');
+    const minutes = Math.floor(absMinutes % 60)
+        .toString()
+        .padStart(2, '0');
+    const finalOffset = `${sign}${hours}:${minutes}`;
+
+    return `${iso}${finalOffset}`;
+}
+
 class AuthManager {
-    private readonly secretKey = 'engineer-plan.token';
+    private readonly secretKey = 'engineer-plan.auth';
 
     constructor(private readonly secretStorage: vscode.SecretStorage, private readonly apiBaseUrl: string) {}
 
     async ensureContext(): Promise<void> {
-        const existing = await this.secretStorage.get(this.secretKey);
-        await this.setContext(Boolean(existing));
+        const existing = await this.readAuth();
+        await this.setContext(Boolean(existing?.token));
     }
 
     async getToken(options?: { promptIfMissing?: boolean }): Promise<string | undefined> {
-        const existing = await this.secretStorage.get(this.secretKey);
-        if (existing) {
+        const existing = await this.readAuth();
+        if (existing?.token) {
             await this.setContext(true);
-            return existing;
+            return existing.token;
         }
         if (options?.promptIfMissing === false) {
             await this.setContext(false);
@@ -86,7 +134,7 @@ class AuthManager {
             return undefined;
         }
 
-        await this.secretStorage.store(this.secretKey, trimmed);
+        await this.secretStorage.store(this.secretKey, JSON.stringify({ token: trimmed, profile } satisfies AuthState));
         await this.setContext(true);
         const userLabel = profile.username || profile.email || profile.id;
         vscode.window.showInformationMessage(`Welcome ${userLabel}`);
@@ -100,6 +148,26 @@ class AuthManager {
 
     private async setContext(hasToken: boolean): Promise<void> {
         await vscode.commands.executeCommand('setContext', 'engineerPlan.hasToken', hasToken);
+    }
+
+    async getAuthState(): Promise<AuthState | undefined> {
+        return this.readAuth();
+    }
+
+    private async readAuth(): Promise<AuthState | undefined> {
+        const raw = await this.secretStorage.get(this.secretKey);
+        if (!raw) {
+            return undefined;
+        }
+        try {
+            const parsed = JSON.parse(raw) as AuthState;
+            if (parsed?.token) {
+                return parsed;
+            }
+        } catch {
+            return undefined;
+        }
+        return undefined;
     }
 
     private async validateToken(token: string): Promise<ApiProfile | undefined> {
@@ -122,15 +190,44 @@ class AuthManager {
                 throw new Error('Profile response missing id');
             }
 
+            const timezoneOffset = this.extractOffset(data.timezone);
+
             return {
                 id: String(data.id),
                 username: data.username ? String(data.username) : undefined,
                 email: data.email ? String(data.email) : undefined,
                 timezone: data.timezone ? String(data.timezone) : undefined,
+                timezoneOffset,
             };
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Token validation failed: ${reason}`);
+            return undefined;
+        }
+    }
+
+    private extractOffset(tz?: string): string | undefined {
+        if (!tz) {
+            return undefined;
+        }
+        try {
+            const now = new Date();
+            const locale = now.toLocaleString('en-US', { timeZone: tz });
+            const parsed = new Date(locale);
+            const offsetMinutes = (parsed.getTime() - now.getTime()) / (1000 * 60);
+            if (Number.isNaN(offsetMinutes)) {
+                return undefined;
+            }
+            const sign = offsetMinutes >= 0 ? '+' : '-';
+            const absMinutes = Math.abs(offsetMinutes);
+            const hours = Math.floor(absMinutes / 60)
+                .toString()
+                .padStart(2, '0');
+            const minutes = Math.floor(absMinutes % 60)
+                .toString()
+                .padStart(2, '0');
+            return `${sign}${hours}:${minutes}`;
+        } catch {
             return undefined;
         }
     }
@@ -182,9 +279,9 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
             return;
         }
 
+        const authState = await this.authManager.getAuthState();
         const sanitizedBaseUrl = this.apiBaseUrl.replace(/\/$/, '');
-        const today = new Date();
-        const yyyyMmDd = today.toISOString().slice(0, 10);
+        const yyyyMmDd = dateStringWithOffset(authState?.profile?.timezoneOffset);
         const url = `${sanitizedBaseUrl}/api/tracks?date=${yyyyMmDd}`;
 
         const token = await this.authManager.getToken({ promptIfMissing: allowPromptForToken });
@@ -269,6 +366,77 @@ export function activate(context: vscode.ExtensionContext): void {
         await provider.refresh({ allowPrompt: false });
     });
 
+    const createCommand = vscode.commands.registerCommand('engineer-plan.create', async () => {
+        const auth = await authManager.getAuthState();
+
+        const now = new Date();
+        const end = new Date(now.getTime() + 60 * 60 * 1000);
+        const offset = auth?.profile?.timezoneOffset;
+
+        const name = await vscode.window.showInputBox({
+            title: 'New Todo Title',
+            prompt: 'Enter task title',
+            ignoreFocusOut: true,
+        });
+        if (!name) {
+            return;
+        }
+
+        const start = await vscode.window.showInputBox({
+            title: 'Start (ISO with offset)',
+            value: formatDateTimeWithOffset(now, offset),
+            prompt: 'Example: 2025-11-26T08:11:00+08:00',
+            ignoreFocusOut: true,
+        });
+        if (!start) {
+            return;
+        }
+
+        const endInput = await vscode.window.showInputBox({
+            title: 'End (ISO with offset)',
+            value: formatDateTimeWithOffset(end, offset),
+            prompt: 'Example: 2025-11-26T09:11:00+08:00',
+            ignoreFocusOut: true,
+        });
+        if (!endInput) {
+            return;
+        }
+
+        const token = await authManager.getToken();
+        if (!token) {
+            return;
+        }
+
+        const sanitizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const url = `${sanitizedBaseUrl}/api/tracks`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    name,
+                    start,
+                    end: endInput,
+                    status: 'not started',
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+
+            vscode.window.showInformationMessage('Todo created');
+            await provider.refresh();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to create todo: ${reason}`);
+        }
+    });
+
     const openTodoCommand = vscode.commands.registerCommand('engineer-plan.openTodo', (todo: ApiTodo, displayStatus?: string) => {
         if (!todo) {
             return;
@@ -280,7 +448,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showInformationMessage(`Todo: ${todo.title} (${statusText}) [+${scorePlus} / -${scoreMinus}]`);
     });
 
-    context.subscriptions.push(view, refreshCommand, loginCommand, logoutCommand, openTodoCommand);
+    context.subscriptions.push(view, refreshCommand, loginCommand, logoutCommand, createCommand, openTodoCommand);
 }
 
 export function deactivate(): void {}
