@@ -6,8 +6,16 @@ interface ApiTodo {
     id: string;
     title: string;
     status: 'pending' | 'done';
-    score_plus?: number;
-    score_minus?: number;
+    start?: string;
+    end?: string;
+    rawStatus?: string;
+    tags?: ApiTag[];
+}
+
+interface ApiTag {
+    id: string | number;
+    name: string;
+    color?: string;
 }
 
 interface ApiProfile {
@@ -235,17 +243,15 @@ class AuthManager {
 
 class TodoItem extends vscode.TreeItem {
     constructor(public readonly todo: ApiTodo, displayStatus?: string) {
-        super(todo.title, vscode.TreeItemCollapsibleState.None);
+        const { icon } = resolveStatus(displayStatus || todo.status);
+        const tagNames = todo.tags?.map((t) => t.name).filter(Boolean).join(', ');
+        super(`${icon} - ${todo.title}`, vscode.TreeItemCollapsibleState.None);
 
-        const scorePlus = todo.score_plus ?? 0;
-        const scoreMinus = todo.score_minus ?? 0;
-        const { icon, label } = resolveStatus(displayStatus || todo.status);
-        const statusLabel = `${icon} ${label}`;
-        this.description = `${statusLabel} (+${scorePlus} / -${scoreMinus})`;
+        this.description = tagNames ? `${tagNames}` : '';
         this.contextValue = 'todoItem';
         this.command = {
-            command: 'engineer-plan.deleteTodo',
-            title: 'Delete Todo',
+            command: 'engineer-plan.showTodo',
+            title: 'Show Todo',
             arguments: [todo],
         };
     }
@@ -313,8 +319,18 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
                     id: String(raw?.id ?? ''),
                     title: String(raw?.title ?? raw?.name ?? 'Untitled'),
                     status: normalizedStatus,
-                    score_plus: typeof raw?.score_plus === 'number' ? raw.score_plus : undefined,
-                    score_minus: typeof raw?.score_minus === 'number' ? raw.score_minus : undefined,
+                    start: raw?.start ? String(raw.start) : undefined,
+                    end: raw?.end ? String(raw.end) : undefined,
+                    rawStatus: rawStatus || undefined,
+                    tags: Array.isArray(raw?.tags)
+                        ? raw.tags
+                              .map((t: any) => ({
+                                  id: t?.id ?? '',
+                                  name: String(t?.name ?? ''),
+                                  color: typeof t?.color === 'string' ? t.color : undefined,
+                              }))
+                              .filter((t: ApiTag) => t.name)
+                        : undefined,
                 };
 
                 const start = raw?.start ? new Date(raw.start) : undefined;
@@ -356,9 +372,17 @@ export function activate(context: vscode.ExtensionContext): void {
         treeDataProvider: provider,
     });
 
+    const autoRefreshHandle = setInterval(() => {
+        void provider.refresh({ allowPrompt: false });
+    }, 15 * 60 * 1000);
+
     const refreshCommand = vscode.commands.registerCommand('engineer-plan.refresh', async () => {
         log('Refresh requested');
         await provider.refresh();
+    });
+
+    const openWebsiteCommand = vscode.commands.registerCommand('engineer-plan.openWebsite', async () => {
+        await vscode.env.openExternal(vscode.Uri.parse('https://go-routine.com/'));
     });
 
     const loginCommand = vscode.commands.registerCommand('engineer-plan.login', async () => {
@@ -496,7 +520,134 @@ export function activate(context: vscode.ExtensionContext): void {
         }
     });
 
-    context.subscriptions.push(output, view, refreshCommand, loginCommand, logoutCommand, createCommand, deleteTodoCommand);
+    const updateTodoCommand = vscode.commands.registerCommand('engineer-plan.updateTodo', async (todo: TodoItem | ApiTodo) => {
+        const target = todo instanceof TodoItem ? todo.todo : todo;
+        if (!target?.id) {
+            log('Update requested without todo id');
+            return;
+        }
+
+        const name = await vscode.window.showInputBox({
+            title: 'Update Todo Title',
+            value: target.title,
+            prompt: 'Enter task title',
+            ignoreFocusOut: true,
+        });
+        if (name === undefined) {
+            return;
+        }
+
+        const startInput = await vscode.window.showInputBox({
+            title: 'Start (ISO with offset)',
+            value: target.start,
+            prompt: 'Example: 2025-11-26T08:11:00+08:00',
+            ignoreFocusOut: true,
+        });
+        if (startInput === undefined) {
+            return;
+        }
+
+        const endInput = await vscode.window.showInputBox({
+            title: 'End (ISO with offset)',
+            value: target.end,
+            prompt: 'Example: 2025-11-26T09:11:00+08:00',
+            ignoreFocusOut: true,
+        });
+        if (endInput === undefined) {
+            return;
+        }
+
+        const statusOptions = ['not started', 'in progress', 'completed'];
+        const statusItems = statusOptions.map((label) => ({ label }));
+        const statusInput = await vscode.window.showQuickPick(statusItems, {
+            title: 'Status',
+            placeHolder: 'Select status',
+            ignoreFocusOut: true,
+            canPickMany: false,
+        });
+        if (statusInput === undefined) {
+            return;
+        }
+
+        const token = await authManager.getToken();
+        if (!token) {
+            return;
+        }
+
+        const sanitizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const url = `${sanitizedBaseUrl}/api/tracks/${target.id}`;
+
+        try {
+            log(`PUT ${url}`);
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    name: name || target.title,
+                    start: startInput || target.start,
+                    end: endInput || target.end,
+                    status: statusInput?.label || target.rawStatus || target.status,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+
+            log(`Updated todo ${target.id}, status ${response.status}`);
+            vscode.window.showInformationMessage('Todo updated');
+            await provider.refresh();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            log(`Update failed for ${target.id}: ${reason}`);
+            vscode.window.showErrorMessage(`Failed to update todo: ${reason}`);
+        }
+    });
+
+    const showTodoCommand = vscode.commands.registerCommand('engineer-plan.showTodo', (todo: ApiTodo) => {
+        if (!todo) {
+            return;
+        }
+        const statusText = todo.rawStatus || todo.status;
+        const start = todo.start ? new Date(todo.start) : undefined;
+        const end = todo.end ? new Date(todo.end) : undefined;
+        const range = start && end
+            ? `${start.toLocaleString()} - ${end.toLocaleString()}`
+            : undefined;
+        const tags = todo.tags?.map((t) => t.name).filter(Boolean);
+
+        const lines = [
+            `### ${todo.title}`,
+            `Status: ${statusText}`,
+        ];
+        if (range) {
+            lines.push(`When: ${range}`);
+        }
+        if (tags?.length) {
+            lines.push(`Tags: ${tags.join(', ')}`);
+        }
+
+        const md = new vscode.MarkdownString(lines.join('\n\n'));
+        md.isTrusted = true;
+        vscode.window.showInformationMessage(md.value, { modal: true });
+    });
+
+    context.subscriptions.push(
+        output,
+        view,
+        refreshCommand,
+        loginCommand,
+        logoutCommand,
+        createCommand,
+        deleteTodoCommand,
+        updateTodoCommand,
+        showTodoCommand,
+        openWebsiteCommand,
+        { dispose: () => clearInterval(autoRefreshHandle) }
+    );
 }
 
 export function deactivate(): void {}

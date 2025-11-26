@@ -40,23 +40,43 @@
     "commands": [
       {
         "command": "engineer-plan.refresh",
-        "title": "Refresh"
+        "title": "Refresh",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "engineer-plan.openWebsite",
+        "title": "Go Routine Website",
+        "icon": "$(globe)"
       },
       {
         "command": "engineer-plan.login",
-        "title": "Login"
+        "title": "Login",
+        "icon": "$(key)"
       },
       {
         "command": "engineer-plan.logout",
-        "title": "Logout"
+        "title": "Logout",
+        "icon": "$(sign-out)"
       },
       {
         "command": "engineer-plan.create",
-        "title": "Create Todo"
+        "title": "Create Todo",
+        "icon": "$(add)"
       },
       {
         "command": "engineer-plan.deleteTodo",
-        "title": "Delete Todo"
+        "title": "Delete Todo",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "engineer-plan.updateTodo",
+        "title": "Update Todo",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "engineer-plan.showTodo",
+        "title": "Show Todo",
+        "icon": "$(info)"
       }
     ],
     "menus": {
@@ -65,6 +85,11 @@
           "command": "engineer-plan.refresh",
           "when": "view == engineerPlanView",
           "group": "navigation"
+        },
+        {
+          "command": "engineer-plan.openWebsite",
+          "when": "view == engineerPlanView",
+          "group": "navigation@0"
         },
         {
           "command": "engineer-plan.logout",
@@ -87,6 +112,11 @@
           "command": "engineer-plan.deleteTodo",
           "when": "view == engineerPlanView",
           "group": "inline"
+        },
+        {
+          "command": "engineer-plan.updateTodo",
+          "when": "view == engineerPlanView",
+          "group": "inline@1"
         }
       ]
     },
