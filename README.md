@@ -12,7 +12,7 @@ Marketplace: https://marketplace.visualstudio.com/items?itemName=rhyanz46.engine
 - Title-bar command “Refresh” to reload tasks for today; tasks are fetched with Bearer token.
 - Title-bar command “Create” to post a new todo (prompts title + start/end HH:mm; date uses today with your saved timezone offset).
 - Click a task to view its info; right-click to update or delete (confirmation shown for delete).
-- Globe icon opens go-routine.com; copy icon lets you copy tasks by tag (optionally include time HH:mm-HH:mm).
+- Globe icon opens go-routine.com; copy icon lets you copy tasks by tag (optionally include time HH:mm-HH:mm); filter icon filters list by tags.
 - Title-bar command “Logout” to clear the saved token; the panel will show “Login” again.
 
 ## Run and develop

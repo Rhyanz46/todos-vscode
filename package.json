@@ -54,6 +54,11 @@
         "icon": "$(copy)"
       },
       {
+        "command": "engineer-plan.filterTags",
+        "title": "Filter Tags",
+        "icon": "$(filter)"
+      },
+      {
         "command": "engineer-plan.login",
         "title": "Login",
         "icon": "$(key)"
@@ -98,6 +103,11 @@
         },
         {
           "command": "engineer-plan.copyTodos",
+          "when": "view == engineerPlanView",
+          "group": "navigation@0"
+        },
+        {
+          "command": "engineer-plan.filterTags",
           "when": "view == engineerPlanView",
           "group": "navigation@0"
         },

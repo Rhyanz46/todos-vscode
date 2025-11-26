@@ -275,8 +275,17 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
     readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
     private items: TodoItem[] = [];
+    private filteredItems: TodoItem[] = [];
+    private filterTags: Set<string> | undefined;
+    private readonly filterStorageKey = 'engineer-plan.filterTags';
+    private tagCache: ApiTag[] = [];
 
-    constructor(private readonly apiBaseUrl: string, private readonly authManager: AuthManager) {}
+    constructor(private readonly apiBaseUrl: string, private readonly authManager: AuthManager, private readonly workspaceState: vscode.Memento) {
+        const saved = this.workspaceState.get<string[]>(this.filterStorageKey);
+        if (saved && saved.length > 0) {
+            this.filterTags = new Set(saved);
+        }
+    }
 
     async refresh(options?: { allowPrompt?: boolean }): Promise<void> {
         await this.loadFromBackend(options?.allowPrompt !== false);
@@ -288,11 +297,60 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
     }
 
     getChildren(_element?: TodoItem): Promise<TodoItem[]> {
-        return Promise.resolve(this.items);
+        return Promise.resolve(this.filteredItems);
     }
 
     getItems(): TodoItem[] {
-        return [...this.items];
+        return [...this.filteredItems];
+    }
+
+    async getAvailableTags(force?: boolean): Promise<ApiTag[]> {
+        if (!force && this.tagCache.length > 0) {
+            return [...this.tagCache];
+        }
+
+        if (!this.apiBaseUrl) {
+            vscode.window.showWarningMessage('engineer-plan.apiBaseUrl is not set');
+            return [];
+        }
+
+        const sanitizedBaseUrl = this.apiBaseUrl.replace(/\/$/, '');
+        const url = `${sanitizedBaseUrl}/api/tags`;
+        const token = await this.authManager.getToken({ promptIfMissing: false });
+        if (!token) {
+            return [];
+        }
+
+        try {
+            const response = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+            const data = await response.json();
+            if (!Array.isArray(data)) {
+                throw new Error('Unexpected tags response format');
+            }
+            this.tagCache = data
+                .map((raw) => ({
+                    id: raw?.id ?? '',
+                    name: raw?.name ? String(raw.name) : '',
+                    color: typeof raw?.color === 'string' ? raw.color : undefined,
+                }))
+                .filter((t) => t.name);
+            return [...this.tagCache];
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to load tags: ${reason}`);
+            return [];
+        }
+    }
+
+    setFilterTags(tags: Set<string> | undefined): void {
+        this.filterTags = tags && tags.size > 0 ? tags : undefined;
+        void this.workspaceState.update(this.filterStorageKey, this.filterTags ? Array.from(this.filterTags) : []);
+        this.applyFilter();
     }
 
     private async loadFromBackend(allowPromptForToken: boolean): Promise<void> {
@@ -363,11 +421,27 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
 
                 return item;
             });
+            this.applyFilter();
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to load todos: ${reason}`);
             this.items = [];
+            this.filteredItems = [];
         }
+    }
+
+    private applyFilter(): void {
+        if (!this.filterTags || this.filterTags.size === 0) {
+            this.filteredItems = [...this.items];
+            this.onDidChangeTreeDataEmitter.fire();
+            return;
+        }
+
+        this.filteredItems = this.items.filter((item) => {
+            const tags = item.todo.tags?.map((t) => t.name).filter(Boolean) ?? [];
+            return tags.some((t) => this.filterTags?.has(t));
+        });
+        this.onDidChangeTreeDataEmitter.fire();
     }
 }
 
@@ -381,7 +455,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const apiBaseUrl = vscode.workspace.getConfiguration('engineer-plan').get<string>('apiBaseUrl') ?? '';
     const authManager = new AuthManager(context.secrets, apiBaseUrl);
     void authManager.ensureContext();
-    const provider = new TodoTreeDataProvider(apiBaseUrl, authManager);
+    const provider = new TodoTreeDataProvider(apiBaseUrl, authManager, context.workspaceState);
 
     void provider.refresh();
 
@@ -652,24 +726,39 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showInformationMessage(md.value, { modal: true });
     });
 
+    const filterTagsCommand = vscode.commands.registerCommand('engineer-plan.filterTags', async () => {
+        const tagList = await provider.getAvailableTags();
+
+        if (tagList.length === 0) {
+            vscode.window.showWarningMessage('No tags available to filter.');
+            return;
+        }
+
+        const selected = await vscode.window.showQuickPick(tagList.map((t) => ({ label: t.name })), {
+            canPickMany: true,
+            title: 'Filter by tags',
+            placeHolder: 'Select tags to show; leave empty to clear filter',
+        });
+
+        if (selected === undefined) {
+            return;
+        }
+
+        if (selected.length === 0) {
+            provider.setFilterTags(undefined);
+            vscode.window.showInformationMessage('Tag filter cleared');
+            return;
+        }
+
+        provider.setFilterTags(new Set(selected.map((s) => s.label)));
+        vscode.window.showInformationMessage(`Filtering by tags: ${selected.map((s) => s.label).join(', ')}`);
+    });
+
     const copyTodosCommand = vscode.commands.registerCommand('engineer-plan.copyTodos', async () => {
         const items = provider.getItems();
-        const tagSet = new Set<string>();
-        items.forEach((item) => item.todo.tags?.forEach((t) => { if (t.name) tagSet.add(t.name); }));
-        const tagList = Array.from(tagSet).sort();
-
-        const selectedTags = await vscode.window.showQuickPick(tagList.map((t) => ({ label: t })), {
-            canPickMany: true,
-            placeHolder: 'Select tags to include',
-            title: 'Copy Todos',
-        });
-        if (selectedTags === undefined) {
-            return;
-        }
-        if (selectedTags.length === 0) {
-            vscode.window.showWarningMessage('No tags selected.');
-            return;
-        }
+        const selectedTagNames = provider['filterTags'] && provider['filterTags'].size > 0
+            ? new Set(provider['filterTags'])
+            : undefined;
 
         const includeTime = await vscode.window.showQuickPick(
             [
@@ -682,11 +771,13 @@ export function activate(context: vscode.ExtensionContext): void {
             return;
         }
 
-        const tagNames = new Set(selectedTags.map((t) => t.label));
         const filtered = items
             .filter((item) => {
+                if (!selectedTagNames) {
+                    return true;
+                }
                 const itemTags = item.todo.tags?.map((t) => t.name).filter(Boolean) ?? [];
-                return itemTags.some((t) => tagNames.has(t));
+                return itemTags.some((t) => selectedTagNames.has(t));
             })
             .sort((a, b) => {
                 const aTime = a.todo.start ? new Date(a.todo.start).getTime() : 0;
@@ -726,6 +817,7 @@ export function activate(context: vscode.ExtensionContext): void {
         showTodoCommand,
         openWebsiteCommand,
         copyTodosCommand,
+        filterTagsCommand,
         { dispose: () => clearInterval(autoRefreshHandle) }
     );
 }
