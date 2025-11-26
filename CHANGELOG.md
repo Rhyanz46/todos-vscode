@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4
+- Added copy-to-clipboard command with tag filter and optional time (HH:mm-HH:mm) plus globe button; tags now parsed and shown in list/detail; click shows modal detail.
+- Switched time display to 24-hour format across list, detail, and copy output.
+
 ## 0.0.3
 - Added context menu Update Todo (PUT /api/tracks/{id}).
 - Added Create Todo time input (HH:mm) and auto refresh every 15 minutes.

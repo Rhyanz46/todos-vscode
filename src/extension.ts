@@ -257,6 +257,19 @@ class TodoItem extends vscode.TreeItem {
     }
 }
 
+function formatTimeRange(start?: string, end?: string): string | undefined {
+    if (!start || !end) {
+        return undefined;
+    }
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return undefined;
+    }
+    const opts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false };
+    return `${startDate.toLocaleTimeString([], opts)}-${endDate.toLocaleTimeString([], opts)}`;
+}
+
 class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
     private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<TodoItem | undefined | void>();
     readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
@@ -276,6 +289,10 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
 
     getChildren(_element?: TodoItem): Promise<TodoItem[]> {
         return Promise.resolve(this.items);
+    }
+
+    getItems(): TodoItem[] {
+        return [...this.items];
     }
 
     private async loadFromBackend(allowPromptForToken: boolean): Promise<void> {
@@ -336,7 +353,7 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
                 const start = raw?.start ? new Date(raw.start) : undefined;
                 const end = raw?.end ? new Date(raw.end) : undefined;
                 const range = start && end
-                    ? `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    ? `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
                     : undefined;
 
                 const item = new TodoItem(todo, rawStatus || undefined);
@@ -615,7 +632,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const start = todo.start ? new Date(todo.start) : undefined;
         const end = todo.end ? new Date(todo.end) : undefined;
         const range = start && end
-            ? `${start.toLocaleString()} - ${end.toLocaleString()}`
+            ? `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
             : undefined;
         const tags = todo.tags?.map((t) => t.name).filter(Boolean);
 
@@ -635,6 +652,68 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showInformationMessage(md.value, { modal: true });
     });
 
+    const copyTodosCommand = vscode.commands.registerCommand('engineer-plan.copyTodos', async () => {
+        const items = provider.getItems();
+        const tagSet = new Set<string>();
+        items.forEach((item) => item.todo.tags?.forEach((t) => { if (t.name) tagSet.add(t.name); }));
+        const tagList = Array.from(tagSet).sort();
+
+        const selectedTags = await vscode.window.showQuickPick(tagList.map((t) => ({ label: t })), {
+            canPickMany: true,
+            placeHolder: 'Select tags to include',
+            title: 'Copy Todos',
+        });
+        if (selectedTags === undefined) {
+            return;
+        }
+        if (selectedTags.length === 0) {
+            vscode.window.showWarningMessage('No tags selected.');
+            return;
+        }
+
+        const includeTime = await vscode.window.showQuickPick(
+            [
+                { label: 'Include time (HH:mm-HH:mm)', value: true },
+                { label: 'Do not include time', value: false },
+            ],
+            { placeHolder: 'Include start-end time?', title: 'Copy Todos', canPickMany: false }
+        );
+        if (!includeTime) {
+            return;
+        }
+
+        const tagNames = new Set(selectedTags.map((t) => t.label));
+        const filtered = items
+            .filter((item) => {
+                const itemTags = item.todo.tags?.map((t) => t.name).filter(Boolean) ?? [];
+                return itemTags.some((t) => tagNames.has(t));
+            })
+            .sort((a, b) => {
+                const aTime = a.todo.start ? new Date(a.todo.start).getTime() : 0;
+                const bTime = b.todo.start ? new Date(b.todo.start).getTime() : 0;
+                return aTime - bTime;
+            });
+
+        if (filtered.length === 0) {
+            vscode.window.showWarningMessage('No todos match the selected tags.');
+            return;
+        }
+
+        const lines = filtered.map((item) => {
+            const { icon } = resolveStatus(item.todo.status);
+            const base = `${icon} - ${item.todo.title}`;
+            if (!includeTime.value) {
+                return base;
+            }
+            const range = formatTimeRange(item.todo.start, item.todo.end);
+            return range ? `${base} (${range})` : base;
+        });
+
+        const text = lines.join('\n');
+        await vscode.env.clipboard.writeText(text);
+        vscode.window.showInformationMessage('Todos copied to clipboard');
+    });
+
     context.subscriptions.push(
         output,
         view,
@@ -646,6 +725,7 @@ export function activate(context: vscode.ExtensionContext): void {
         updateTodoCommand,
         showTodoCommand,
         openWebsiteCommand,
+        copyTodosCommand,
         { dispose: () => clearInterval(autoRefreshHandle) }
     );
 }

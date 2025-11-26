@@ -49,6 +49,11 @@
         "icon": "$(globe)"
       },
       {
+        "command": "engineer-plan.copyTodos",
+        "title": "Copy Todos",
+        "icon": "$(copy)"
+      },
+      {
         "command": "engineer-plan.login",
         "title": "Login",
         "icon": "$(key)"
@@ -88,6 +93,11 @@
         },
         {
           "command": "engineer-plan.openWebsite",
+          "when": "view == engineerPlanView",
+          "group": "navigation@0"
+        },
+        {
+          "command": "engineer-plan.copyTodos",
           "when": "view == engineerPlanView",
           "group": "navigation@0"
         },
