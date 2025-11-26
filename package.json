@@ -55,8 +55,8 @@
         "title": "Create Todo"
       },
       {
-        "command": "engineer-plan.openTodo",
-        "title": "Open Todo"
+        "command": "engineer-plan.deleteTodo",
+        "title": "Delete Todo"
       }
     ],
     "menus": {
@@ -84,7 +84,7 @@
       ],
       "view/item/context": [
         {
-          "command": "engineer-plan.openTodo",
+          "command": "engineer-plan.deleteTodo",
           "when": "view == engineerPlanView",
           "group": "inline"
         }

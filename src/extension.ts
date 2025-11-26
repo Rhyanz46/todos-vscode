@@ -244,9 +244,9 @@ class TodoItem extends vscode.TreeItem {
         this.description = `${statusLabel} (+${scorePlus} / -${scoreMinus})`;
         this.contextValue = 'todoItem';
         this.command = {
-            command: 'engineer-plan.openTodo',
-            title: 'Open Todo',
-            arguments: [todo, label],
+            command: 'engineer-plan.deleteTodo',
+            title: 'Delete Todo',
+            arguments: [todo],
         };
     }
 }
@@ -339,6 +339,12 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+    const output = vscode.window.createOutputChannel('Engineer Plan');
+    const log = (message: string) => {
+        const timestamp = new Date().toISOString();
+        output.appendLine(`[${timestamp}] ${message}`);
+    };
+
     const apiBaseUrl = vscode.workspace.getConfiguration('engineer-plan').get<string>('apiBaseUrl') ?? '';
     const authManager = new AuthManager(context.secrets, apiBaseUrl);
     void authManager.ensureContext();
@@ -351,6 +357,7 @@ export function activate(context: vscode.ExtensionContext): void {
     });
 
     const refreshCommand = vscode.commands.registerCommand('engineer-plan.refresh', async () => {
+        log('Refresh requested');
         await provider.refresh();
     });
 
@@ -362,11 +369,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const logoutCommand = vscode.commands.registerCommand('engineer-plan.logout', async () => {
         await authManager.clearToken();
+        log('Logged out');
         vscode.window.showInformationMessage('Logged out from backend');
         await provider.refresh({ allowPrompt: false });
     });
 
     const createCommand = vscode.commands.registerCommand('engineer-plan.create', async () => {
+        log('Create todo requested');
         const auth = await authManager.getAuthState();
 
         const now = new Date();
@@ -411,6 +420,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const url = `${sanitizedBaseUrl}/api/tracks`;
 
         try {
+            log(`POST ${url}`);
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -429,26 +439,64 @@ export function activate(context: vscode.ExtensionContext): void {
                 throw new Error(`${response.status} ${response.statusText}`);
             }
 
+            log(`Created todo, status ${response.status}`);
             vscode.window.showInformationMessage('Todo created');
             await provider.refresh();
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
+            log(`Create failed: ${reason}`);
             vscode.window.showErrorMessage(`Failed to create todo: ${reason}`);
         }
     });
 
-    const openTodoCommand = vscode.commands.registerCommand('engineer-plan.openTodo', (todo: ApiTodo, displayStatus?: string) => {
-        if (!todo) {
+    const deleteTodoCommand = vscode.commands.registerCommand('engineer-plan.deleteTodo', async (todo: TodoItem | ApiTodo) => {
+        const target = todo instanceof TodoItem ? todo.todo : todo;
+        if (!target?.id) {
+            log('Delete requested without todo id');
             return;
         }
 
-        const scorePlus = todo.score_plus ?? 0;
-        const scoreMinus = todo.score_minus ?? 0;
-        const statusText = displayStatus || todo.status;
-        vscode.window.showInformationMessage(`Todo: ${todo.title} (${statusText}) [+${scorePlus} / -${scoreMinus}]`);
+        const confirm = await vscode.window.showWarningMessage(
+            `Delete todo: ${target.title}?`,
+            { modal: true },
+            'Delete'
+        );
+        if (confirm !== 'Delete') {
+            return;
+        }
+
+        const token = await authManager.getToken();
+        if (!token) {
+            return;
+        }
+
+        const sanitizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const url = `${sanitizedBaseUrl}/api/tracks/${target.id}`;
+
+        try {
+            log(`DELETE ${url}`);
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+
+            log(`Deleted todo ${target.id}, status ${response.status}`);
+            vscode.window.showInformationMessage('Todo deleted');
+            await provider.refresh();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            log(`Delete failed for ${target.id}: ${reason}`);
+            vscode.window.showErrorMessage(`Failed to delete todo: ${reason}`);
+        }
     });
 
-    context.subscriptions.push(view, refreshCommand, loginCommand, logoutCommand, createCommand, openTodoCommand);
+    context.subscriptions.push(output, view, refreshCommand, loginCommand, logoutCommand, createCommand, deleteTodoCommand);
 }
 
 export function deactivate(): void {}
