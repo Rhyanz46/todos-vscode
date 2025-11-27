@@ -129,12 +129,12 @@
       ],
       "view/item/context": [
         {
-          "command": "engineer-plan.deleteTodo",
+          "command": "engineer-plan.updateTodo",
           "when": "view == engineerPlanView",
           "group": "inline"
         },
         {
-          "command": "engineer-plan.updateTodo",
+          "command": "engineer-plan.deleteTodo",
           "when": "view == engineerPlanView",
           "group": "inline@1"
         }

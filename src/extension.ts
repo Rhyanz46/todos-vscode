@@ -243,17 +243,33 @@ class AuthManager {
 
 class TodoItem extends vscode.TreeItem {
     constructor(public readonly todo: ApiTodo, displayStatus?: string) {
-        const { icon } = resolveStatus(displayStatus || todo.status);
-        const tagNames = todo.tags?.map((t) => t.name).filter(Boolean).join(', ');
-        super(`${icon} - ${todo.title}`, vscode.TreeItemCollapsibleState.None);
-
-        this.description = tagNames ? `${tagNames}` : '';
+        super('', vscode.TreeItemCollapsibleState.None);
+        this.updateLabel(new Date(), displayStatus);
         this.contextValue = 'todoItem';
         this.command = {
             command: 'engineer-plan.showTodo',
             title: 'Show Todo',
             arguments: [todo],
         };
+    }
+
+    updateLabel(now: Date = new Date(), displayStatus?: string): void {
+        const { icon } = resolveStatus(displayStatus || this.todo.status);
+        const countdown = formatCountdown(this.todo.start, this.todo.end, now);
+        this.label = `${icon} - ${this.todo.title}`;
+
+        const range = formatTimeRange(this.todo.start, this.todo.end);
+        const timePart = range ? (countdown ? `${range} (${countdown})` : range) : undefined;
+        const tagNames = this.todo.tags?.map((t) => t.name).filter(Boolean).join(', ');
+
+        const parts: string[] = [];
+        if (timePart) {
+            parts.push(timePart);
+        }
+        if (tagNames) {
+            parts.push(tagNames);
+        }
+        this.description = parts.join(' • ');
     }
 }
 
@@ -268,6 +284,36 @@ function formatTimeRange(start?: string, end?: string): string | undefined {
     }
     const opts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false };
     return `${startDate.toLocaleTimeString([], opts)}-${endDate.toLocaleTimeString([], opts)}`;
+}
+
+function formatCountdown(start?: string, end?: string, now: Date = new Date()): string | undefined {
+    if (!start || !end) {
+        return undefined;
+    }
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const nowMs = now.getTime();
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return undefined;
+    }
+    if (nowMs < startDate.getTime() || nowMs > endDate.getTime()) {
+        return undefined;
+    }
+    const remainingMs = endDate.getTime() - nowMs;
+    if (remainingMs <= 0) {
+        return undefined;
+    }
+    const totalSeconds = Math.floor(remainingMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600)
+        .toString()
+        .padStart(2, '0');
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+        .toString()
+        .padStart(2, '0');
+    const seconds = Math.floor(totalSeconds % 60)
+        .toString()
+        .padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
 }
 
 class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
@@ -443,6 +489,12 @@ class TodoTreeDataProvider implements vscode.TreeDataProvider<TodoItem> {
         });
         this.onDidChangeTreeDataEmitter.fire();
     }
+
+    updateLabels(now: Date = new Date()): void {
+        this.items.forEach((item) => item.updateLabel(now));
+        this.filteredItems.forEach((item) => item.updateLabel(now));
+        this.onDidChangeTreeDataEmitter.fire();
+    }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -466,6 +518,10 @@ export function activate(context: vscode.ExtensionContext): void {
     const autoRefreshHandle = setInterval(() => {
         void provider.refresh({ allowPrompt: false });
     }, 15 * 60 * 1000);
+
+    const labelTickHandle = setInterval(() => {
+        provider.updateLabels(new Date());
+    }, 1000);
 
     const refreshCommand = vscode.commands.registerCommand('engineer-plan.refresh', async () => {
         log('Refresh requested');
@@ -818,7 +874,8 @@ export function activate(context: vscode.ExtensionContext): void {
         openWebsiteCommand,
         copyTodosCommand,
         filterTagsCommand,
-        { dispose: () => clearInterval(autoRefreshHandle) }
+        { dispose: () => clearInterval(autoRefreshHandle) },
+        { dispose: () => clearInterval(labelTickHandle) }
     );
 }
 
