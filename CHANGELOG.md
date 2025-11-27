@@ -5,6 +5,10 @@
 - Switched time display to 24-hour format across list, detail, and copy output.
 - Added tag filter button in the header (filters visible list by selected tags).
 
+## 0.0.5
+- Added live countdown for in-progress tasks (shown next to time range in item description).
+- Swapped context menu order (Update before Delete).
+
 ## 0.0.3
 - Added context menu Update Todo (PUT /api/tracks/{id}).
 - Added Create Todo time input (HH:mm) and auto refresh every 15 minutes.
